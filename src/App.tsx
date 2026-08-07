@@ -117,7 +117,10 @@ export default function App() {
   // 2. Real-time Firebase Subscriptions with Local Fallback Syncing
   useEffect(() => {
     const unsubAgencies = subscribeAgencies((data) => {
-      if (data && data.length > 0) setAgencies(data);
+      if (data && data.length > 0) {
+        // જો ફાયરબેઝમાંથી ડેટા મળે તો તેને લોકલ સાથે સેટ કરો
+        setAgencies(data);
+      }
     });
 
     const unsubHoardings = subscribeHoardings((data) => {
@@ -256,6 +259,8 @@ export default function App() {
         address: agencyData.address || '',
         createdDate: new Date().toISOString().split('T')[0],
       };
+      
+      // જૂના ડેટાને રાખવા માટે prev નો ઉપયોગ કરો
       setAgencies((prev) => [newAgency, ...prev]);
       await saveAgency(newAgency);
     } catch (e) {
