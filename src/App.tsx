@@ -54,12 +54,27 @@ export default function App() {
   const [lang, setLang] = useState<'gu' | 'en'>('gu');
   const [fyList, setFyList] = useState<string[]>(getFinancialYearsList(2024, 10));
 
-  // State Stores - Default to empty array for fresh real database
-  const [agencies, setAgencies] = useState<Agency[]>([]);
-  const [hoardings, setHoardings] = useState<Hoarding[]>([]);
-  const [quarterlyFees, setQuarterlyFees] = useState<QuarterlyFee[]>([]);
-  const [certificates, setCertificates] = useState<StabilityCertificate[]>([]);
-  const [tpSchemes, setTpSchemes] = useState<TpScheme[]>([]);
+  // State Stores with localStorage fallback support
+  const [agencies, setAgencies] = useState<Agency[]>(() => {
+    const saved = localStorage.getItem('ezb_agencies');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [hoardings, setHoardings] = useState<Hoarding[]>(() => {
+    const saved = localStorage.getItem('ezb_hoardings');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [quarterlyFees, setQuarterlyFees] = useState<QuarterlyFee[]>(() => {
+    const saved = localStorage.getItem('ezb_quarterly_fees');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [certificates, setCertificates] = useState<StabilityCertificate[]>(() => {
+    const saved = localStorage.getItem('ezb_certificates');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [tpSchemes, setTpSchemes] = useState<TpScheme[]>(() => {
+    const saved = localStorage.getItem('ezb_tp_schemes');
+    return saved ? JSON.parse(saved) : initialTpSchemes;
+  });
 
   const [stats, setStats] = useState<SystemStats>({
     totalAgencies: 0,
@@ -73,31 +88,52 @@ export default function App() {
     totalTpSchemes: 0,
   });
 
+  // Save to localStorage whenever states change
+  useEffect(() => {
+    localStorage.setItem('ezb_agencies', JSON.stringify(agencies));
+  }, [agencies]);
+
+  useEffect(() => {
+    localStorage.setItem('ezb_hoardings', JSON.stringify(hoardings));
+  }, [hoardings]);
+
+  useEffect(() => {
+    localStorage.setItem('ezb_quarterly_fees', JSON.stringify(quarterlyFees));
+  }, [quarterlyFees]);
+
+  useEffect(() => {
+    localStorage.setItem('ezb_certificates', JSON.stringify(certificates));
+  }, [certificates]);
+
+  useEffect(() => {
+    localStorage.setItem('ezb_tp_schemes', JSON.stringify(tpSchemes));
+  }, [tpSchemes]);
+
   // 1. Seed initial TP schemes if empty on startup
   useEffect(() => {
     seedInitialFirestoreData();
   }, []);
 
-  // 2. Real-time Firebase Subscriptions for Multi-User Live Syncing across computers
+  // 2. Real-time Firebase Subscriptions with Local Fallback Syncing
   useEffect(() => {
     const unsubAgencies = subscribeAgencies((data) => {
-      setAgencies(data || []);
+      if (data && data.length > 0) setAgencies(data);
     });
 
     const unsubHoardings = subscribeHoardings((data) => {
-      setHoardings(data || []);
+      if (data && data.length > 0) setHoardings(data);
     });
 
     const unsubQuarterlyFees = subscribeQuarterlyFees((data) => {
-      setQuarterlyFees(data || []);
+      if (data && data.length > 0) setQuarterlyFees(data);
     });
 
     const unsubCerts = subscribeStabilityCertificates((data) => {
-      setCertificates(data || []);
+      if (data && data.length > 0) setCertificates(data);
     });
 
     const unsubTp = subscribeTpSchemes((data) => {
-      setTpSchemes(data || []);
+      if (data && data.length > 0) setTpSchemes(data);
     });
 
     return () => {
@@ -164,6 +200,7 @@ export default function App() {
         ...schemeData,
         id: `tp-${Date.now()}`,
       };
+      setTpSchemes((prev) => [newScheme, ...prev]);
       await saveTpScheme(newScheme);
     } catch (e) {
       console.error('Error adding TP scheme:', e);
@@ -178,6 +215,7 @@ export default function App() {
         ...existing,
         ...schemeData,
       };
+      setTpSchemes((prev) => prev.map((s) => (s.id === id ? updated : s)));
       await saveTpScheme(updated);
     } catch (e) {
       console.error('Error updating TP scheme:', e);
@@ -186,6 +224,7 @@ export default function App() {
 
   const handleDeleteTpScheme = async (id: string) => {
     try {
+      setTpSchemes((prev) => prev.filter((s) => s.id !== id));
       await removeTpSchemeFs(id);
     } catch (e) {
       console.error('Error deleting TP scheme:', e);
@@ -197,6 +236,7 @@ export default function App() {
       for (const scheme of initialTpSchemes) {
         await saveTpScheme(scheme);
       }
+      setTpSchemes(initialTpSchemes);
     } catch (e) {
       console.error('Error seeding default TP schemes:', e);
     }
@@ -216,14 +256,8 @@ export default function App() {
         address: agencyData.address || '',
         createdDate: new Date().toISOString().split('T')[0],
       };
+      setAgencies((prev) => [newAgency, ...prev]);
       await saveAgency(newAgency);
-
-      // Optional sync with Express server
-      fetch('/api/agencies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(agencyData),
-      }).catch(() => {});
     } catch (e) {
       console.error('Error adding agency:', e);
     }
@@ -234,20 +268,18 @@ export default function App() {
       const existing = agencies.find((a) => a.id === id);
       if (!existing) return;
       const updated: Agency = { ...existing, ...agencyData };
+      setAgencies((prev) => prev.map((a) => (a.id === id ? updated : a)));
       await saveAgency(updated);
 
       if (agencyData.name && agencyData.name !== existing.name) {
+        setHoardings((prev) =>
+          prev.map((h) => (h.agencyId === id ? { ...h, agencyName: agencyData.name } : h))
+        );
         const affectedHoardings = hoardings.filter((h) => h.agencyId === id);
         for (const h of affectedHoardings) {
           await saveHoarding({ ...h, agencyName: agencyData.name });
         }
       }
-
-      fetch(`/api/agencies/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(agencyData),
-      }).catch(() => {});
     } catch (e) {
       console.error('Error updating agency:', e);
     }
@@ -255,8 +287,8 @@ export default function App() {
 
   const handleDeleteAgency = async (id: string) => {
     try {
+      setAgencies((prev) => prev.filter((a) => a.id !== id));
       await removeAgencyFs(id);
-      fetch(`/api/agencies/${id}`, { method: 'DELETE' }).catch(() => {});
     } catch (e) {
       console.error('Error deleting agency:', e);
     }
@@ -320,13 +352,8 @@ export default function App() {
         createdAt: new Date().toISOString().split('T')[0],
       };
 
+      setHoardings((prev) => [newHoarding, ...prev]);
       await saveHoarding(newHoarding);
-
-      fetch('/api/hoardings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(hoardingData),
-      }).catch(() => {});
     } catch (e) {
       console.error('Error adding hoarding:', e);
     }
@@ -377,13 +404,8 @@ export default function App() {
         permissionDate: permDate,
       };
 
+      setHoardings((prev) => prev.map((h) => (h.id === id ? updated : h)));
       await saveHoarding(updated);
-
-      fetch(`/api/hoardings/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(hoardingData),
-      }).catch(() => {});
     } catch (e) {
       console.error('Error editing hoarding:', e);
     }
@@ -419,13 +441,8 @@ export default function App() {
         },
       };
 
+      setHoardings((prev) => prev.map((h) => (h.id === id ? updated : h)));
       await saveHoarding(updated);
-
-      fetch(`/api/hoardings/${id}/cancel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cancellationData),
-      }).catch(() => {});
     } catch (e) {
       console.error('Error cancelling hoarding:', e);
     }
@@ -476,13 +493,8 @@ export default function App() {
         remarks: remarks || '',
       };
 
+      setQuarterlyFees((prev) => [newFee, ...prev]);
       await saveQuarterlyFee(newFee);
-
-      fetch('/api/quarterly-fees', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(feeData),
-      }).catch(() => {});
     } catch (e) {
       console.error('Error adding quarterly fee:', e);
     }
@@ -514,13 +526,8 @@ export default function App() {
         totalAmount: calc.totalAmount,
       };
 
+      setQuarterlyFees((prev) => prev.map((q) => (q.id === id ? updated : q)));
       await saveQuarterlyFee(updated);
-
-      fetch(`/api/quarterly-fees/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(feeData),
-      }).catch(() => {});
     } catch (e) {
       console.error('Error updating quarterly fee:', e);
     }
@@ -528,8 +535,8 @@ export default function App() {
 
   const handleDeleteQuarterlyFee = async (id: string) => {
     try {
+      setQuarterlyFees((prev) => prev.filter((q) => q.id !== id));
       await removeQuarterlyFeeFs(id);
-      fetch(`/api/quarterly-fees/${id}`, { method: 'DELETE' }).catch(() => {});
     } catch (e) {
       console.error('Error deleting quarterly fee:', e);
     }
@@ -566,13 +573,8 @@ export default function App() {
         status: statusInfo.status,
       };
 
+      setCertificates((prev) => [newCert, ...prev]);
       await saveStabilityCertificate(newCert);
-
-      fetch('/api/stability-certificates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(certData),
-      }).catch(() => {});
     } catch (e) {
       console.error('Error adding certificate:', e);
     }
@@ -594,13 +596,8 @@ export default function App() {
         status: statusInfo.status,
       };
 
+      setCertificates((prev) => prev.map((c) => (c.id === id ? updated : c)));
       await saveStabilityCertificate(updated);
-
-      fetch(`/api/stability-certificates/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(certData),
-      }).catch(() => {});
     } catch (e) {
       console.error('Error updating certificate:', e);
     }
@@ -610,13 +607,17 @@ export default function App() {
     if (
       confirm(
         lang === 'gu'
-          ? 'શું તમે સેન્ટ્રલ ડેટાબેઝમાંથી તમામ ડેટા સાફ (Clear) કરવા માંગો છો?'
-          : 'Are you sure you want to clear all data from the central live database?'
+          ? 'શું તમે તમામ ડેટા સાફ (Clear) કરવા માંગો છો?'
+          : 'Are you sure you want to clear all data?'
       )
     ) {
       try {
+        localStorage.clear();
+        setAgencies([]);
+        setHoardings([]);
+        setQuarterlyFees([]);
+        setCertificates([]);
         await clearAllFirestoreData();
-        fetch('/api/reset-data', { method: 'POST' }).catch(() => {});
       } catch (e) {
         console.error('Error clearing data:', e);
       }
@@ -869,8 +870,8 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div>
             {lang === 'gu'
-              ? '© 2026 હોર્ડિંગ મેનેજમેન્ટ સોફ્ટવેર - સેન્ટ્રલ ફાયરબેઝ લાઈવ ડેટાબેઝ & મલ્ટી-યુઝર સિંક'
-              : '© 2026 Hoarding Management System - Central Firebase Live Firestore Multi-User Platform'}
+              ? '© 2026 હોર્ડિંગ મેનેજમેન્ટ સોફ્ટવેર - સેન્ટ્રલ ફાયરબેઝ લાઈવ ડેટાબેઝ & લોકલ સ્ટોરેજ સિંક'
+              : '© 2026 Hoarding Management System - Central Firebase Live Firestore & Local Storage Platform'}
           </div>
           <div className="flex items-center gap-3 font-mono text-[11px] text-slate-500">
             <span>Rules: Math.ceil() | 2x Computerized Rate | Auto-FY | 45-Day Alert</span>
