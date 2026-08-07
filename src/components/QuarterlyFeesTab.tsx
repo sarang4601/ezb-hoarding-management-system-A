@@ -51,9 +51,9 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingFeeId, setEditingFeeId] = useState<string | null>(null);
   const [printingFee, setPrintingFee] = useState<QuarterlyFee | null>(null);
   const [batchPrintFees, setBatchPrintFees] = useState<QuarterlyFee[] | null>(null);
-  const [draftPrintFees, setDraftPrintFees] = useState<QuarterlyFee[] | null>(null);
 
   // Form State for Multi-Hoarding Selection & Editable Quarterly Fee Column
   const [modalAgencyFilter, setModalAgencyFilter] = useState('ALL');
@@ -74,8 +74,9 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
     new Set(hoardings.map((h) => h.agencyName).filter(Boolean))
   ).sort();
 
-  // Open modal with pre-selected agency / hoarding or default
+  // Open modal for Adding new fee
   const openAddModal = (preselectedAgency?: string, preselectedHoardingId?: string) => {
+    setEditingFeeId(null);
     const agName = preselectedAgency || 'ALL';
     setModalAgencyFilter(agName);
 
@@ -103,7 +104,26 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
     setPaymentMode('Online');
     setReceiptNo(`RCP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
     setReceiptDate(new Date().toISOString().split('T')[0]);
-    setRemarks('Fee paid to municipal treasury');
+    setRemarks('');
+    setIsModalOpen(true);
+  };
+
+  // Open modal for Editing existing fee
+  const openEditModal = (fee: QuarterlyFee) => {
+    setEditingFeeId(fee.id);
+    setModalAgencyFilter(fee.agencyName || 'ALL');
+    setModalSelectedHoardingIds([fee.hoardingId]);
+    setModalCustomFees({ [fee.hoardingId]: fee.quarterlyLicenseFee });
+
+    setReceiptFy(fee.financialYear);
+    setQuarter(fee.quarter);
+    setInterest(fee.interest);
+    setDeductions(fee.deductions);
+    setPaymentStatus(fee.paymentStatus);
+    setPaymentMode(fee.paymentMode);
+    setReceiptNo(fee.receiptNo);
+    setReceiptDate(fee.receiptDate);
+    setRemarks(fee.remarks || '');
     setIsModalOpen(true);
   };
 
@@ -146,26 +166,19 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
       return;
     }
 
-    const createdFees: QuarterlyFee[] = [];
-
-    modalSelectedHoardingIds.forEach((hId, index) => {
+    if (editingFeeId) {
+      // Update existing record
+      const hId = modalSelectedHoardingIds[0];
       const h = hoardings.find((item) => item.id === hId);
       if (!h) return;
 
-      const customBaseFee =
-        modalCustomFees[hId] ?? (h.calculatedQuarterlyFee || Math.ceil(h.calculatedAnnualFee / 4));
+      const customBaseFee = modalCustomFees[hId] ?? (h.calculatedQuarterlyFee || Math.ceil(h.calculatedAnnualFee / 4));
       const taxableAmount = Math.max(0, Math.ceil(customBaseFee + interest - deductions));
       const sgst = Math.ceil(taxableAmount * 0.09);
       const cgst = Math.ceil(taxableAmount * 0.09);
       const totalAmount = taxableAmount + sgst + cgst;
 
-      const uniqueReceiptNo =
-        modalSelectedHoardingIds.length === 1
-          ? receiptNo
-          : `${receiptNo}-${h.hoardingNo.replace(/[^a-zA-Z0-9]/g, '').slice(-4)}`;
-
-      createdFees.push({
-        id: `fee-${Date.now()}-${index}`,
+      const updatedData = {
         hoardingId: h.id,
         hoardingNo: h.hoardingNo,
         agencyName: h.agencyName,
@@ -180,22 +193,66 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
         totalAmount,
         paymentStatus,
         paymentMode,
-        receiptNo: uniqueReceiptNo,
+        receiptNo,
         receiptDate,
-        remarks: remarks || `Quarterly License Fee Payment for ${h.hoardingNo}`,
-      });
-    });
+        remarks,
+      };
 
-    setIsModalOpen(false);
-    // Show Print Preview Modal first before saving!
-    setDraftPrintFees(createdFees);
+      onUpdateQuarterlyFee(editingFeeId, updatedData);
+      setIsModalOpen(false);
+      setEditingFeeId(null);
+    } else {
+      // Add new records (Directly saving to database without automatic PDF download prompt)
+      modalSelectedHoardingIds.forEach((hId, index) => {
+        const h = hoardings.find((item) => item.id === hId);
+        if (!h) return;
+
+        const customBaseFee =
+          modalCustomFees[hId] ?? (h.calculatedQuarterlyFee || Math.ceil(h.calculatedAnnualFee / 4));
+        const taxableAmount = Math.max(0, Math.ceil(customBaseFee + interest - deductions));
+        const sgst = Math.ceil(taxableAmount * 0.09);
+        const cgst = Math.ceil(taxableAmount * 0.09);
+        const totalAmount = taxableAmount + sgst + cgst;
+
+        const uniqueReceiptNo =
+          modalSelectedHoardingIds.length === 1
+            ? receiptNo
+            : `${receiptNo}-${h.hoardingNo.replace(/[^a-zA-Z0-9]/g, '').slice(-4)}`;
+
+        const newFeeData = {
+          id: `fee-${Date.now()}-${index}`,
+          hoardingId: h.id,
+          hoardingNo: h.hoardingNo,
+          agencyName: h.agencyName,
+          financialYear: receiptFy,
+          quarter,
+          quarterlyLicenseFee: customBaseFee,
+          interest,
+          deductions,
+          taxableAmount,
+          sgst,
+          cgst,
+          totalAmount,
+          paymentStatus,
+          paymentMode,
+          receiptNo: uniqueReceiptNo,
+          receiptDate,
+          remarks,
+        };
+
+        onAddQuarterlyFee(newFeeData);
+      });
+
+      setIsModalOpen(false);
+    }
   };
 
   const filtered = quarterlyFees.filter((q) => {
     const matchesSearch =
       q.receiptNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       q.hoardingNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      q.agencyName.toLowerCase().includes(searchTerm.toLowerCase());
+      q.agencyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (q.remarks && q.remarks.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus = paymentFilter === 'ALL' || q.paymentStatus === paymentFilter;
     const matchesFy = selectedFy === 'ALL' || q.financialYear === selectedFy;
@@ -272,6 +329,7 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
       'TotalAmount',
       'PaymentStatus',
       'PaymentMode',
+      'Remarks',
     ];
 
     const rows = selectedList.map((f) => [
@@ -290,6 +348,7 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
       f.totalAmount,
       f.paymentStatus,
       f.paymentMode,
+      `"${f.remarks || ''}"`,
     ]);
 
     const csvContent =
@@ -318,8 +377,8 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
               type="text"
               placeholder={
                 lang === 'gu'
-                  ? 'રસીદ નં, હોર્ડિંગ નં કે એજન્સી શોધો...'
-                  : 'Search receipt, hoarding, or agency...'
+                  ? 'રસીદ નં, હોર્ડિંગ નં, એજન્સી કે રિમાર્ક્સ શોધો...'
+                  : 'Search receipt, hoarding, agency, or remarks...'
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -348,7 +407,7 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
         </button>
       </div>
 
-      {/* Multi-Select Action Banner (Displays when 1 or more receipts selected) */}
+      {/* Multi-Select Action Banner */}
       {selectedFeeIds.length > 0 && (
         <div className="bg-blue-900 text-white p-3.5 rounded-xl shadow-md border border-blue-800 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
           <div className="flex items-center gap-3">
@@ -366,7 +425,6 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Batch Print */}
             <button
               onClick={handleBatchPrint}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
@@ -375,7 +433,6 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
               <span>{lang === 'gu' ? 'બેચ પ્રિન્ટ રસીદો' : 'Batch Print Receipts'}</span>
             </button>
 
-            {/* Batch Export CSV */}
             <button
               onClick={handleExportSelectedCsv}
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
@@ -384,7 +441,6 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
               <span>{lang === 'gu' ? 'CSV ડાઉનલોડ' : 'Export CSV'}</span>
             </button>
 
-            {/* Batch Status Change */}
             <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-lg border border-slate-700">
               <span className="text-[11px] text-slate-300 font-medium px-1">
                 {lang === 'gu' ? 'સ્ટેટસ:' : 'Status:'}
@@ -409,7 +465,6 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
               </button>
             </div>
 
-            {/* Batch Delete */}
             <button
               onClick={handleBatchDelete}
               className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-xs transition-colors"
@@ -427,29 +482,28 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
           <table className="w-full text-left text-xs md:text-sm text-slate-700">
             <thead className="bg-slate-100 text-slate-600 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
               <tr>
-                {/* Select Checkbox Column */}
                 <th className="px-3 py-3 w-10 text-center">
                   <input
                     type="checkbox"
                     checked={isAllSelected}
                     onChange={toggleSelectAll}
                     className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    title={lang === 'gu' ? 'બધા પસંદ કરો / રદ કરો' : 'Select / Deselect All'}
                   />
                 </th>
                 <th className="px-4 py-3">{lang === 'gu' ? 'રસીદ નં & તારીખ' : 'Receipt No & Date'}</th>
                 <th className="px-4 py-3">{lang === 'gu' ? 'હોર્ડિંગ & એજન્સી' : 'Hoarding & Agency'}</th>
                 <th className="px-4 py-3">{lang === 'gu' ? 'ત્રિમાસ (Quarter / FY)' : 'Quarter / FY'}</th>
                 <th className="px-4 py-3">{lang === 'gu' ? 'ફી & ટેક્સ ગણતરી' : 'Fee & Tax Breakdown'}</th>
+                <th className="px-4 py-3">{lang === 'gu' ? 'રિમાર્ક્સ (Remarks)' : 'Remarks'}</th>
                 <th className="px-4 py-3">{lang === 'gu' ? 'કુલ રકમ' : 'Total Amount'}</th>
                 <th className="px-4 py-3">{lang === 'gu' ? 'સ્ટેટસ & મોડ' : 'Status & Mode'}</th>
-                <th className="px-4 py-3 text-right">{lang === 'gu' ? 'પહોંચ પ્રિન્ટ' : 'Receipt'}</th>
+                <th className="px-4 py-3 text-right">{lang === 'gu' ? 'એક્શન્સ (Actions)' : 'Actions'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-8 text-slate-400">
+                  <td colSpan={9} className="text-center py-8 text-slate-400">
                     {lang === 'gu' ? 'કોઈ ત્રિમાસિક ફી રેકોર્ડ મળ્યો નથી.' : 'No quarterly fee records found.'}
                   </td>
                 </tr>
@@ -463,7 +517,6 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                         isSelected ? 'bg-blue-50/70 border-l-4 border-l-blue-600' : ''
                       }`}
                     >
-                      {/* Select Checkbox */}
                       <td className="px-3 py-3 text-center">
                         <input
                           type="checkbox"
@@ -473,26 +526,22 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                         />
                       </td>
 
-                      {/* Receipt No */}
                       <td className="px-4 py-3 font-mono font-bold text-slate-900">
                         <div>{fee.receiptNo}</div>
                         <div className="text-slate-500 text-[11px] font-normal">{fee.receiptDate}</div>
                       </td>
 
-                      {/* Hoarding & Agency */}
                       <td className="px-4 py-3 font-medium">
                         <div className="font-bold text-slate-800 font-mono">{fee.hoardingNo}</div>
                         <div className="text-xs text-slate-500">{fee.agencyName}</div>
                       </td>
 
-                      {/* Quarter & FY */}
                       <td className="px-4 py-3">
                         <span className="font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded text-xs">
                           {fee.quarter} ({fee.financialYear})
                         </span>
                       </td>
 
-                      {/* Breakdown */}
                       <td className="px-4 py-3 font-mono text-xs space-y-0.5">
                         <div>Base: ₹{fee.quarterlyLicenseFee.toLocaleString('en-IN')}</div>
                         {fee.interest > 0 && <div className="text-amber-700">Int: +₹{fee.interest}</div>}
@@ -500,12 +549,15 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                         <div className="text-slate-500">GST: ₹{fee.sgst + fee.cgst}</div>
                       </td>
 
-                      {/* Total Amount */}
+                      {/* Remarks Column */}
+                      <td className="px-4 py-3 text-slate-600 text-xs italic">
+                        {fee.remarks || '-'}
+                      </td>
+
                       <td className="px-4 py-3 font-mono font-extrabold text-sm text-slate-900">
                         ₹{fee.totalAmount.toLocaleString('en-IN')}
                       </td>
 
-                      {/* Status & Mode */}
                       <td className="px-4 py-3">
                         <div className="space-y-1">
                           {fee.paymentStatus === 'Paid' ? (
@@ -528,14 +580,42 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                         </div>
                       </td>
 
-                      {/* Print Receipt Button */}
-                      <td className="px-4 py-3 text-right">
+                      {/* Actions Column: Print, Edit, Delete */}
+                      <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
                         <button
                           onClick={() => setPrintingFee(fee)}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded text-xs font-medium transition-colors shadow-xs"
+                          title="Print Receipt"
                         >
                           <Printer className="w-3.5 h-3.5 text-blue-400" />
-                          <span>{lang === 'gu' ? 'પહોંચ પ્રિન્ટ' : 'Print Receipt'}</span>
+                          <span>{lang === 'gu' ? 'પ્રિન્ટ' : 'Print'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => openEditModal(fee)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-medium transition-colors shadow-xs"
+                          title="Edit Record"
+                        >
+                          <span>{lang === 'gu' ? 'એડિટ' : 'Edit'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                lang === 'gu'
+                                  ? 'શું તમે ખરેખર આ ફી રેકોર્ડ ડિલીટ કરવા માંગો છો?'
+                                  : 'Are you sure you want to delete this record?'
+                              )
+                            ) {
+                              onDeleteQuarterlyFee(fee.id);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-medium transition-colors shadow-xs"
+                          title="Delete Record"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>{lang === 'gu' ? 'ડિલીટ' : 'Delete'}</span>
                         </button>
                       </td>
                     </tr>
@@ -547,7 +627,7 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
         </div>
       </div>
 
-      {/* Record Quarterly Fee Modal with Multi-Hoarding Selection & Custom Editable Fee Column */}
+      {/* Record / Edit Quarterly Fee Modal */}
       {isModalOpen && (() => {
         const matchingModalHoardings = hoardings.filter(
           (h) => h.status === 'Active' && (modalAgencyFilter === 'ALL' || h.agencyName === modalAgencyFilter)
@@ -556,7 +636,6 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
           matchingModalHoardings.length > 0 &&
           matchingModalHoardings.every((h) => modalSelectedHoardingIds.includes(h.id));
 
-        // Calculate sum across selected hoardings
         let totalModalBaseFee = 0;
         let totalModalNetPayable = 0;
         modalSelectedHoardingIds.forEach((hId) => {
@@ -578,9 +657,13 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                 <div className="flex items-center gap-2 text-slate-900">
                   <IndianRupee className="w-6 h-6 text-emerald-600" />
                   <h3 className="text-base md:text-lg font-bold">
-                    {lang === 'gu'
-                      ? 'ત્રિમાસિક લાયસન્સ ફી રસીદ નોંધો (મલ્ટી-સિલેક્ટ અને એડિટેબલ ફી કોલમ)'
-                      : 'Record Quarterly License Fee (Multi-Select & Custom Fee Column)'}
+                    {editingFeeId
+                      ? lang === 'gu'
+                        ? 'ત્રિમાસિક લાયસન્સ ફી સુધારો (Edit Quarterly Fee)'
+                        : 'Edit Quarterly License Fee'
+                      : lang === 'gu'
+                      ? 'ત્રિમાસિક લાયસન્સ ફી રસીદ નોંધો'
+                      : 'Record Quarterly License Fee'}
                   </h3>
                 </div>
                 <button
@@ -593,7 +676,6 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4 text-xs md:text-sm">
-                {/* Agency Selection & FY / Quarter Inputs */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">
@@ -602,7 +684,8 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                     <select
                       value={modalAgencyFilter}
                       onChange={(e) => handleModalAgencyChange(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs md:text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={!!editingFeeId}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs md:text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                     >
                       <option value="ALL">
                         {lang === 'gu' ? 'તમામ એજન્સીઓ (All Agencies)' : 'All Agencies'}
@@ -624,9 +707,9 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                       onChange={(e) => setReceiptFy(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="2024-25">2024-25 (ગત નાણાકીય વર્ષ)</option>
-                      <option value="2025-26">2025-26 (વર્તમાન વર્ષ)</option>
-                      <option value="2026-27">2026-27 (આગામી વર્ષ)</option>
+                      <option value="2024-25">2024-25</option>
+                      <option value="2025-26">2025-26</option>
+                      <option value="2026-27">2026-27</option>
                     </select>
                   </div>
 
@@ -639,27 +722,22 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                       onChange={(e) => setQuarter(e.target.value as QuarterType)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="Q1">Q1 (એપ્રિલ - જૂન / Apr - Jun)</option>
-                      <option value="Q2">Q2 (જુલાઈ - સપ્ટેમ્બર / Jul - Sep)</option>
-                      <option value="Q3">Q3 (ઓક્ટોબર - ડિસેમ્બર / Oct - Dec)</option>
-                      <option value="Q4">Q4 (જાન્યુઆરી - માર્ચ / Jan - Mar)</option>
-                      <option value="Annual">સંપૂર્ણ વાર્ષિક ફી (Full Annual Fee)</option>
+                      <option value="Q1">Q1 (Apr - Jun)</option>
+                      <option value="Q2">Q2 (Jul - Sep)</option>
+                      <option value="Q3">Q3 (Oct - Dec)</option>
+                      <option value="Q4">Q4 (Jan - Mar)</option>
+                      <option value="Annual">Annual Fee</option>
                     </select>
                   </div>
                 </div>
 
-                {/* Hoardings Multi-Select Table with Editable Quarterly Fee Column */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="block text-slate-800 font-bold">
                       {lang === 'gu'
-                        ? '૪. એજન્સીના તમામ હોર્ડિંગ્સ અને ત્રિમાસિક લાયસન્સ ફી (મલ્ટી-સિલેક્ટ કરો):'
-                        : '4. Select Agency Hoardings & Set Custom Quarterly License Fees:'}
+                        ? '૪. એજન્સીના હોર્ડિંગ્સ અને ત્રિમાસિક લાયસન્સ ફી:'
+                        : '4. Select Hoarding & Set Custom Fee:'}
                     </label>
-                    <span className="text-xs text-slate-500 font-medium">
-                      {modalSelectedHoardingIds.length} / {matchingModalHoardings.length}{' '}
-                      {lang === 'gu' ? 'હોર્ડિંગ્સ પસંદ કરેલ' : 'hoardings selected'}
-                    </span>
                   </div>
 
                   <div className="border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
@@ -671,22 +749,23 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                               type="checkbox"
                               checked={isAllModalSelected}
                               onChange={() => toggleModalSelectAll(matchingModalHoardings)}
+                              disabled={!!editingFeeId}
                               className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                             />
                           </th>
                           <th className="px-3 py-2">{lang === 'gu' ? 'હોર્ડિંગ નં & લોકેશન' : 'Hoarding & Location'}</th>
                           <th className="px-3 py-2">{lang === 'gu' ? 'પ્રકાર & માપ' : 'Type & Size'}</th>
                           <th className="px-3 py-2 text-center bg-blue-50 border-x border-blue-200 text-blue-900">
-                            {lang === 'gu' ? 'ત્રિમાસિક લાયસન્સ ફી (₹) * [જાતે લખી શકાય]' : 'Quarterly License Fee (₹) * [Editable]'}
+                            {lang === 'gu' ? 'ત્રિમાસિક લાયસન્સ ફી (₹) *' : 'Quarterly Fee (₹) *'}
                           </th>
-                          <th className="px-3 py-2 text-right">{lang === 'gu' ? 'GST (18%) સાથે કુલ રકમ' : 'Total with 18% GST'}</th>
+                          <th className="px-3 py-2 text-right">{lang === 'gu' ? 'GST સાથે કુલ' : 'Total with GST'}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
                         {matchingModalHoardings.length === 0 ? (
                           <tr>
                             <td colSpan={5} className="px-3 py-4 text-center text-slate-400">
-                              {lang === 'gu' ? 'કોઈ એક્ટિવ હોર્ડિંગ્સ મળ્યા નથી.' : 'No active hoardings found.'}
+                              {lang === 'gu' ? 'કોઈ હોર્ડિંગ્સ મળ્યા નથી.' : 'No hoardings found.'}
                             </td>
                           </tr>
                         ) : (
@@ -711,7 +790,8 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
-                                    onChange={() => toggleModalSelectRow(h.id)}
+                                    onChange={() => !editingFeeId && toggleModalSelectRow(h.id)}
+                                    disabled={!!editingFeeId}
                                     className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                                   />
                                 </td>
@@ -723,10 +803,7 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                                   </div>
                                 </td>
                                 <td className="px-3 py-2 text-slate-600 font-mono text-[11px]">
-                                  {h.type === 'Computerized' ? '💻 કોમ્પ્યુટરાઈઝ્ડ' : '🖼️ સિંગલ'}
-                                  <div>
-                                    {h.widthMeters}m x {h.lengthMeters}m ({h.areaSqMeters} sq.m)
-                                  </div>
+                                  {h.type} ({h.areaSqMeters} sq.m)
                                 </td>
                                 <td className="px-3 py-2 text-center bg-blue-50/30 border-x border-blue-100">
                                   <input
@@ -755,32 +832,10 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                   </div>
                 </div>
 
-                {/* Live Multi-Hoarding Summary Card */}
-                <div className="bg-slate-900 text-white p-3.5 rounded-xl space-y-1.5 text-xs font-mono border border-slate-800 flex items-center justify-between">
-                  <div>
-                    <p className="text-slate-400">
-                      {lang === 'gu' ? 'પસંદ કરેલ હોર્ડિંગ્સ:' : 'Selected Hoardings:'}{' '}
-                      <strong className="text-amber-400">{modalSelectedHoardingIds.length}</strong>
-                    </p>
-                    <p className="text-slate-300">
-                      {lang === 'gu' ? 'કુલ બેઝ ત્રિમાસિક ફી:' : 'Total Base Fee:'}{' '}
-                      <span>₹{totalModalBaseFee.toLocaleString('en-IN')}</span>
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="text-slate-400">{lang === 'gu' ? 'કુલ ચૂકવવાપાત્ર રકમ (૧૮% GST સહ):' : 'Total Payable Dues:'}</p>
-                    <p className="text-lg font-black text-emerald-400">
-                      ₹{totalModalNetPayable.toLocaleString('en-IN')}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Payment & Receipt Metadata */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">
-                      {lang === 'gu' ? 'વ્યાજ / લેટ ફી (₹)' : 'Interest / Late Fee (₹)'}
+                      {lang === 'gu' ? 'વ્યાજ / લેટ ફી (₹)' : 'Interest (₹)'}
                     </label>
                     <input
                       type="number"
@@ -811,10 +866,10 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                       onChange={(e) => setPaymentMode(e.target.value as any)}
                       className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg"
                     >
-                      <option value="Online">ઓનલાઇન / NEFT / UPI</option>
-                      <option value="Cheque">ચેક (Cheque)</option>
-                      <option value="DD">ડિમાન્ડ ડ્રાફ્ટ (DD)</option>
-                      <option value="Cash">રોકડ (Cash)</option>
+                      <option value="Online">Online / NEFT / UPI</option>
+                      <option value="Cheque">Cheque</option>
+                      <option value="DD">DD</option>
+                      <option value="Cash">Cash</option>
                     </select>
                   </div>
                 </div>
@@ -822,7 +877,7 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">
-                      {lang === 'gu' ? 'રસીદ નંબર પ્રિફિક્સ/નંબર *' : 'Receipt No *'}
+                      {lang === 'gu' ? 'રસીદ નંબર *' : 'Receipt No *'}
                     </label>
                     <input
                       type="text"
@@ -847,6 +902,20 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                   </div>
                 </div>
 
+                {/* Remarks Field Input */}
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">
+                    {lang === 'gu' ? 'રિમાર્ક્સ (Remarks / નોંધ)' : 'Remarks'}
+                  </label>
+                  <input
+                    type="text"
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder={lang === 'gu' ? 'અહીં રિમાર્ક્સ લખો...' : 'Enter remarks here...'}
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs md:text-sm"
+                  />
+                </div>
+
                 <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
                   <button
                     type="button"
@@ -859,9 +928,13 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
                     type="submit"
                     className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-sm transition-colors"
                   >
-                    {lang === 'gu'
-                      ? `${modalSelectedHoardingIds.length} હોર્ડિંગ્સની રસીદો સેવ કરો`
-                      : `Save ${modalSelectedHoardingIds.length} Fee Receipts`}
+                    {editingFeeId
+                      ? lang === 'gu'
+                        ? 'ફેરફાર સેવ કરો'
+                        : 'Update Fee Record'
+                      : lang === 'gu'
+                      ? 'રસીદ સેવ કરો'
+                      : 'Save Fee Receipt'}
                   </button>
                 </div>
               </form>
@@ -870,7 +943,6 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
         );
       })()}
 
-      {/* Official Print Receipt Modal Trigger */}
       {printingFee && (
         <PrintReceiptModal
           fee={printingFee}
@@ -879,27 +951,10 @@ export const QuarterlyFeesTab: React.FC<QuarterlyFeesTabProps> = ({
         />
       )}
 
-      {/* Batch Print Receipt Modal Trigger */}
       {batchPrintFees && (
         <PrintReceiptModal
           fees={batchPrintFees}
           onClose={() => setBatchPrintFees(null)}
-          lang={lang}
-        />
-      )}
-
-      {/* Draft Print Receipt Modal Preview before Save */}
-      {draftPrintFees && (
-        <PrintReceiptModal
-          fees={draftPrintFees}
-          isDraft={true}
-          onConfirmSave={() => {
-            draftPrintFees.forEach((feeData) => {
-              onAddQuarterlyFee(feeData);
-            });
-            setDraftPrintFees(null);
-          }}
-          onClose={() => setDraftPrintFees(null)}
           lang={lang}
         />
       )}
