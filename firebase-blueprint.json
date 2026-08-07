@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "agencies": {
+      "title": "Agency",
+      "description": "Registered hoardings advertising agency",
+      "properties": {
+        "id": { "type": "string" },
+        "agencyNo": { "type": "string" },
+        "name": { "type": "string" },
+        "gstNumber": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "createdDate": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "hoardings": {
+      "title": "Hoarding",
+      "description": "Hoarding billboard structure record",
+      "properties": {
+        "id": { "type": "string" },
+        "hoardingNo": { "type": "string" },
+        "agencyId": { "type": "string" },
+        "agencyName": { "type": "string" },
+        "tpNumber": { "type": "string" },
+        "fpRsNumber": { "type": "string" },
+        "location": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "remarks": { "type": "string" },
+        "type": { "type": "string" },
+        "ownershipType": { "type": "string" },
+        "width": { "type": "number" },
+        "length": { "type": "number" },
+        "rawArea": { "type": "number" },
+        "roundedArea": { "type": "number" },
+        "baseRatePerSqFt": { "type": "number" },
+        "fyRates": { "type": "object" },
+        "effectiveRate": { "type": "number" },
+        "calculatedAnnualFee": { "type": "number" },
+        "calculatedQuarterlyFee": { "type": "number" },
+        "permissionDate": { "type": "string" },
+        "financialYear": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "cancellationDetails": { "type": "object" }
+      },
+      "required": ["id", "hoardingNo", "agencyId"]
+    },
+    "quarterlyFees": {
+      "title": "Quarterly Fee",
+      "description": "Quarterly license fee collection record",
+      "properties": {
+        "id": { "type": "string" },
+        "hoardingId": { "type": "string" },
+        "hoardingNo": { "type": "string" },
+        "agencyName": { "type": "string" },
+        "financialYear": { "type": "string" },
+        "quarter": { "type": "string" },
+        "quarterlyLicenseFee": { "type": "number" },
+        "interest": { "type": "number" },
+        "deductions": { "type": "number" },
+        "taxableAmount": { "type": "number" },
+        "sgst": { "type": "number" },
+        "cgst": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "receiptNo": { "type": "string" },
+        "receiptDate": { "type": "string" },
+        "paymentStatus": { "type": "string" },
+        "paymentMode": { "type": "string" },
+        "remarks": { "type": "string" }
+      },
+      "required": ["id", "hoardingId", "financialYear", "quarter"]
+    },
+    "stabilityCertificates": {
+      "title": "Stability Certificate",
+      "description": "Structural stability certificate and alert record",
+      "properties": {
+        "id": { "type": "string" },
+        "hoardingId": { "type": "string" },
+        "hoardingNo": { "type": "string" },
+        "agencyName": { "type": "string" },
+        "location": { "type": "string" },
+        "certificateNo": { "type": "string" },
+        "engineerName": { "type": "string" },
+        "engineerLicenseNo": { "type": "string" },
+        "issueDate": { "type": "string" },
+        "validUntilDate": { "type": "string" },
+        "daysRemaining": { "type": "number" },
+        "isAlertActive": { "type": "boolean" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "hoardingId", "certificateNo"]
+    },
+    "tpSchemes": {
+      "title": "Town Planning Scheme",
+      "description": "TP Schemes master directory for hoarding locations",
+      "properties": {
+        "id": { "type": "string" },
+        "schemeNo": { "type": "string" },
+        "nameGu": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "areaName": { "type": "string" },
+        "remarks": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "nameGu"]
+    }
+  }
+}

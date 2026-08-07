@@ -1,0 +1,6 @@
+{
+  "name": "Hoarding Management System",
+  "description": "Comprehensive billboard and advertisement hoarding licensing, fee calculation, stability certification tracking with 45-day alerts, and agency management system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
