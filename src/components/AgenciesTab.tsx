@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Search, Building2, Edit2, Trash2, Phone, Mail, MapPin } from 'lucide-react';
 import { Agency } from '../types';
 
@@ -29,6 +29,19 @@ export const AgenciesTab: React.FC<AgenciesTabProps> = ({
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
 
+  // Clear form fields whenever modal closes or opens for addition
+  useEffect(() => {
+    if (!isModalOpen) {
+      setEditingAgency(null);
+      setName('');
+      setGstNumber('');
+      setContactPerson('');
+      setPhone('');
+      setEmail('');
+      setAddress('');
+    }
+  }, [isModalOpen]);
+
   const openAddModal = () => {
     setEditingAgency(null);
     setName('');
@@ -42,25 +55,48 @@ export const AgenciesTab: React.FC<AgenciesTabProps> = ({
 
   const openEditModal = (agency: Agency) => {
     setEditingAgency(agency);
-    setName(agency.name);
-    setGstNumber(agency.gstNumber);
-    setContactPerson(agency.contactPerson);
-    setPhone(agency.phone);
-    setEmail(agency.email);
-    setAddress(agency.address);
+    setName(agency.name || '');
+    setGstNumber(agency.gstNumber || '');
+    setContactPerson(agency.contactPerson || '');
+    setPhone(agency.phone || '');
+    setEmail(agency.email || '');
+    setAddress(agency.address || '');
     setIsModalOpen(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
+    if (!name.trim()) return;
 
     if (editingAgency) {
-      onEditAgency(editingAgency.id, { name, gstNumber, contactPerson, phone, email, address });
+      onEditAgency(editingAgency.id, { 
+        name: name.trim(), 
+        gstNumber: gstNumber.trim(), 
+        contactPerson: contactPerson.trim(), 
+        phone: phone.trim(), 
+        email: email.trim(), 
+        address: address.trim() 
+      });
     } else {
-      onAddAgency({ name, gstNumber, contactPerson, phone, email, address });
+      onAddAgency({ 
+        name: name.trim(), 
+        gstNumber: gstNumber.trim(), 
+        contactPerson: contactPerson.trim(), 
+        phone: phone.trim(), 
+        email: email.trim(), 
+        address: address.trim() 
+      });
     }
+
+    // Immediately close modal and clear states to prevent overlapping
     setIsModalOpen(false);
+    setEditingAgency(null);
+    setName('');
+    setGstNumber('');
+    setContactPerson('');
+    setPhone('');
+    setEmail('');
+    setAddress('');
   };
 
   const filtered = agencies.filter(
