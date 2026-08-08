@@ -55,10 +55,27 @@ export default function App() {
   const [fyList, setFyList] = useState<string[]>(getFinancialYearsList(2024, 10));
 
   // State Stores with localStorage fallback support
-  const [agencies, setAgencies] = useState<Agency[]>(() => {
-    const saved = localStorage.getItem('ezb_agencies');
-    return saved ? JSON.parse(saved) : [];
-  });
+const handleAddAgency = async (agencyData: any) => {
+    try {
+      const newAgency: Agency = {
+        id: `ag-${Date.now()}`,
+        agencyNo: `AG-${new Date().getFullYear()}-${String(agencies.length + 1).padStart(3, '0')}`,
+        name: agencyData.name,
+        gstNumber: agencyData.gstNumber || '',
+        contactPerson: agencyData.contactPerson || '',
+        phone: agencyData.phone || '',
+        email: agencyData.email || '',
+        address: agencyData.address || '',
+        createdDate: new Date().toISOString().split('T')[0],
+      };
+      
+      // જૂના ડેટાને સુરક્ષિત રાખીને નવી એજન્સી ઉમેરવા માટે
+      setAgencies((prev) => [newAgency, ...prev]);
+      await saveAgency(newAgency);
+    } catch (e) {
+      console.error('Error adding agency:', e);
+    }
+  };
   const [hoardings, setHoardings] = useState<Hoarding[]>(() => {
     const saved = localStorage.getItem('ezb_hoardings');
     return saved ? JSON.parse(saved) : [];
