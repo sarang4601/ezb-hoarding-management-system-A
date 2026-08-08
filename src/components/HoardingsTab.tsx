@@ -1,5 +1,6 @@
-import { collection, addDoc, doc, updateDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import React, { useState, useEffect } from 'react';
+import { collection, addDoc, doc, updateDoc } from "firebase/firestore"; // Firebase ફંક્શન્સ ઇમ્પોર્ટ કરેલ છે
+import { db } from "../lib/firebase"; // ફાયરબેઝ ડેટાબેઝ ઇમ્પોર્ટ
 import {
   Plus,
   Search,
@@ -156,6 +157,7 @@ export const HoardingsTab: React.FC<HoardingsTabProps> = ({
     }
   };
 
+  // સુધારેલું સબમિટ ફંક્શન (ડેટા સેવ અને ઓવરલેપ નિવારવા માટે)
   const handleAddEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agencyId) {
@@ -179,12 +181,27 @@ export const HoardingsTab: React.FC<HoardingsTabProps> = ({
       targetFy: selectedFy,
     };
 
-    if (editingHoarding) {
-      await onEditHoarding(editingHoarding.id, payload);
-    } else {
-      onAddHoarding(payload);
+    try {
+      if (editingHoarding) {
+        // જો એડિટ થતું હોય તો માત્ર તે જ આઈડીવાળો રેકોર્ડ અપડેટ કરો (ઓવરલેપ અટકાવવા)
+        const docRef = doc(db, "hoardings", editingHoarding.id);
+        await updateDoc(docRef, payload);
+        await onEditHoarding(editingHoarding.id, payload);
+        alert(lang === 'gu' ? 'ડેટા સફળતાપૂર્વક અપડેટ થઈ ગયો છે!' : 'Data updated successfully!');
+      } else {
+        // જો નવો ડેટા હોય તો addDoc વાપરો જેથી ફાયરબેઝ નવી યુનિક ID જનરેટ કરે અને ડેટા કાયમ સચવાય
+        const docRef = await addDoc(collection(db, "hoardings"), {
+          ...payload,
+          createdAt: new Date(),
+        });
+        onAddHoarding({ id: docRef.id, ...payload });
+        alert(lang === 'gu' ? 'ડેટા સફળતાપૂર્વક સેવ થઈ ગયો છે!' : 'Data saved successfully!');
+      }
+      setIsAddEditModalOpen(false);
+    } catch (error) {
+      console.error("Error saving hoarding data: ", error);
+      alert(lang === 'gu' ? 'ડેટા સેવ કરવામાં ભૂલ આવી છે.' : 'Error saving data.');
     }
-    setIsAddEditModalOpen(false);
   };
 
   const handleCancelSubmit = (e: React.FormEvent) => {
