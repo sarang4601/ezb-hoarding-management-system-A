@@ -134,7 +134,10 @@ const handleAddAgency = async (agencyData: any) => {
   // 2. Real-time Firebase Subscriptions with Local Fallback Syncing
   useEffect(() => {
     const unsubAgencies = subscribeAgencies((data) => {
-      if (data && data.length > 0) {
+      if (data && data.length > 0) {
+        setAgencies(data);
+      }
+    });
         // જો ફાયરબેઝમાંથી ડેટા મળે તો તેને લોકલ સાથે સેટ કરો
         setAgencies(data);
       }
